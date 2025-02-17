@@ -28,17 +28,12 @@ Ensure you have the following dependencies installed:
 
 1. Clone this repository to your local machine:
    ```bash
-   git clone https://github.com/yourusername/clinical-data-pipeline.git
+   git clone https://github.com/GeDiNe-Lab/MitoMatcherAnalysis.git
    ```
 
 2. Navigate into the project directory:
    ```bash
-   cd clinical-data-pipeline
-   ```
-
-3. Install required dependencies (e.g., JSON handling, requests, etc.):
-   ```bash
-   pip install -r requirements.txt
+   cd MitoMatcherAnalysis/Pipeline_JSON_to_formattedTable
    ```
 
 ---
@@ -48,7 +43,7 @@ Ensure you have the following dependencies installed:
 To run the pipeline, use the following command:
 
 ```bash
-python3 pipeline.py <input_folder> <output_folder> <hpo_path> <variants> <het_threshold> <norm_status>
+python3 Pipeline_JSON_to_formattedTable/main.py <input_folder> <output_folder> <hpo_path> <variants> <het_threshold> <norm_status>
 ```
 
 Where:
@@ -61,21 +56,8 @@ Where:
 
 ### Example:
 ```bash
-python3 pipeline.py /path/to/input /path/to/output /path/to/hpo_file "A3243G,A73G" 0.1 "yes"
+python3 Pipeline_JSON_to_formattedTable/main.py /path/to/input /path/to/output /path/to/hpo_file "A3243G,A73G" 0.1 "yes"
 ```
-
----
-
-## **Arguments**
-
-### **Required Arguments:**
-
-1. `input_folder` (str): Path to the folder containing JSON files for processing.
-2. `output_folder` (str): Path to the folder where processed data will be saved.
-3. `hpo_path` (str): Path to the HPO file containing information about phenotype terms.
-4. `variants` (str): A comma-separated list of variants to use as a filter for the dataset (e.g., `"A3243G,A73G"`).
-5. `het_threshold` (float): The minimum heteroplasmy threshold for filtering variants.
-6. `norm_status` (str): Normalization status for mutation analysis. Possible values are `'yes'`, `'no'`, `'blood'`, and `'urine'`.
 
 ---
 
@@ -127,16 +109,16 @@ Example log message:
 
 ---
 
-## **Example**
-
-Here’s a typical command you’d run:
-
-```bash
-python3 pipeline.py /path/to/json_files /path/to/output_folder /path/to/hpo_file "A3243G,A73G" 0.1 "yes"
-```
+## **Output**
 
 After running the pipeline, you will find the following files in the output folder:
 - `concatenate_HPO.csv`: A CSV containing HPO terms for each patient.
 - `concatenate_variants.csv`: A CSV containing variant information for each patient.
 - `process.log`: A log file detailing the execution and errors (if any).
 - `clinical_table.csv`: The final generated clinical table.
+
+
+## **Upgrades**
+
+- Tests
+- Randomly generated input data
