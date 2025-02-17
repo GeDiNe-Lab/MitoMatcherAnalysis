@@ -1,4 +1,4 @@
-# **Clinical Data Pipeline**
+# **JSON Clinical Data to Formated Table for Analysis**
 
 This Python-based pipeline is designed to process clinical data stored in JSON format. The goal of this pipeline is to transform raw data files into a structured dataset for downstream analysis. It extracts, filters, and organizes data related to Human Phenotype Ontology (HPO) terms, variants, and clinical data. The final output is a clinical table that combines these data sources.
 
@@ -12,7 +12,8 @@ This Python-based pipeline is designed to process clinical data stored in JSON f
 - [Workflow Overview](#workflow-overview)
 - [Modules](#modules)
 - [Logging](#logging)
-- [Example](#example)
+- [Output](#output)
+- [Upgrades](#upgrades)
 
 ---
 
