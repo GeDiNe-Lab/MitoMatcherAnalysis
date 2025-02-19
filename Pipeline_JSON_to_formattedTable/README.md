@@ -123,3 +123,4 @@ After running the pipeline, you will find the following files in the output fold
 
 - Tests
 - Randomly generated input data
+- "AND" research

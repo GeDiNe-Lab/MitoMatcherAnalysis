@@ -1,0 +1,1257 @@
+---
+title: 'Analysis report : Analysis of the m3243 cohort patient'
+author: "Axel Bonesteve"
+date: "2025-02-19"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(eval = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+This report is an example of the analysis performed on VCF data from patients with the human mitochondrial mutation 3243A>G, a mutation that results in leucine tRNA malformation and leads to MIDD and MELAS syndrome.
+
+# Librairies importation
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(paletteer)
+library(ggbeeswarm)
+library(BuenColors) # devtools::install_github("caleblareau/BuenColors")
+library(ggpubr)
+library(ggrepel)
+```
+
+
+# Functions 
+
+These functions that follow were retrieved from https://github.com/caleblareau/7076.
+
+And were initially developed for this paper : 
+
+**Codon affinity in mitochondrial DNA shapes evolutionary and somatic fitness “**.
+**Caleb A. Lareau et al. https://www.biorxiv.org/content/10.1101/2023.04.23.537997v1**
+
+They annotate, count and statisticize synonymous variants in the mitochondrial genome based on the reference tRNA and mutated tRNA pair involved following mutation of mitochondrial genetic information. 
+
+
+```{R}
+
+annotate_synonymous <- function(df){
+  sdf <- df %>% mutate(fp = Consequence == "synonymous_variant")
+  variant_causes_Wobble_to_WCF <-  (grepl("\\*",sdf$Variant.tRNA) & grepl("near",sdf$Reference.tRNA)) & sdf$fp
+  variant_causes_WCF_to_Wobble <-  (grepl("\\*",sdf$Reference.tRNA) & grepl("near",sdf$Variant.tRNA)) & sdf$fp
+  variant_causes_Wobble_to_Wobble <-  (grepl("near",sdf$Variant.tRNA) & grepl("near",sdf$Reference.tRNA)) & sdf$fp
+  variant_causes_WCF_to_WCF <- (grepl("\\*",sdf$Variant.tRNA) & grepl("\\*",sdf$Reference.tRNA)) & sdf$fp
+  
+  # Sanity check
+  summary(as.numeric(variant_causes_Wobble_to_WCF) + 
+            as.numeric(variant_causes_WCF_to_Wobble) + 
+            as.numeric(variant_causes_Wobble_to_Wobble) + as.numeric(variant_causes_WCF_to_WCF))
+  vec_annotate <- case_when(
+    variant_causes_Wobble_to_WCF ~ "Wobble_to_WCF", 
+    variant_causes_WCF_to_Wobble ~ "WCF_to_Wobble", 
+    variant_causes_Wobble_to_Wobble ~ "Wobble_to_Wobble", 
+    variant_causes_WCF_to_WCF ~ "WCF_to_WCF", 
+    TRUE ~ "other"
+  )
+}
+
+```
+
+```{R}
+
+count_me <- function(df){
+  df %>% 
+    filter(Consequence == "synonymous_variant") %>%
+    group_by(syn_annotation) %>%
+    summarize(n = n()) %>%
+    tidyr::complete(syn_annotation, fill = list(count = 0)) %>%
+    mutate(perc = n/sum(n)*100)
+}
+
+```
+
+
+```{r}
+
+process_stats_syn_type <- function(df,df_ref,count_df=FALSE, count_df_ref=FALSE) {
+  
+  if (count_df_ref==FALSE) {
+      cm_a <- count_me(df_ref)
+  } else {
+      cm_a <- count_me_occ(df_ref)
+  }
+  if (count_df==FALSE) {  
+      cm_t <- count_me(df)
+  } else {     
+      cm_t <- count_me_occ(df)
+  }
+  
+  cm_t$ref_n <- cm_a$n
+  cm_t$ref_perc <- cm_a$perc
+  cm_t$pvalue <- c(prop.test(cm_t$n[1], sum(cm_t$n), p = cm_a$perc[1] / 100)$p.value,
+                   prop.test(cm_t$n[2], sum(cm_t$n), p = cm_a$perc[2] / 100)$p.value,
+                   prop.test(cm_t$n[3], sum(cm_t$n), p = cm_a$perc[3] / 100)$p.value,
+                   prop.test(cm_t$n[4], sum(cm_t$n), p = cm_a$perc[4] / 100)$p.value)
+  
+  cm_t
+}
+
+```
+
+
+# Data importation 
+
+## m.3243A>G variants info 
+
+```{r}
+
+m3243_var <- read.csv2("../data/concatenate_variants.csv", header = TRUE) 
+
+m3243_var$pos <- as.integer(m3243_var$pos) # Important step.
+m3243_var$id <- paste0(m3243_var$ref, m3243_var$pos, m3243_var$alt) # Adding mutation id
+
+# filter application second check
+m3243_var$heteroplasmy_rate <- as.numeric(m3243_var$heteroplasmy_rate)
+m3243_var <- m3243_var %>% filter(heteroplasmy_rate > 5)
+```
+
+### addition of majority haplogroup 
+
+```{r}
+
+sample.info <- m3243_var[, c("patient_id", "haplogroup")]
+sample.info$hap_maj <- substr(sample.info$haplogroup, 1, 2)
+
+sample.info.hv <- subset(sample.info, hap_maj == "HV")
+sample.info.l <- subset(sample.info, hap_maj %in% paste0("L", 0:6))
+sample.info.nothvandL <- subset(sample.info, !(hap_maj %in% c("HV", paste0("L", 0:6))))
+
+sample.info.nothvandL$hap_maj <- substr(sample.info.nothvandL$hap_maj, 1, 1)
+sample.info <- unique(rbind(sample.info.hv, sample.info.l, sample.info.nothvandL))
+
+# Haplogroup join
+
+m3243_var <- m3243_var %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+### addition of minority haplogroup
+
+```{r}
+
+sample.info = m3243_var[,c("patient_id","haplogroup")]
+haplogroup = m3243_var$haplogroup
+haplogroup= substr(haplogroup, start = 1, stop = 2) # Here in pairs to recover HV and L0, L1, etc.
+sample.info <- data.frame(sample.info, hap_min=haplogroup)
+
+sample.info = unique(sample.info)
+
+
+# Haplogroup join
+m3243_var <- m3243_var %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+## Random cohorte
+
+```{r}
+
+random_cohorte <- read.csv("../data/random_dataset_var_20250219.csv", header=TRUE)
+
+
+random_cohorte$id <- paste0(random_cohorte$ref, random_cohorte$pos, random_cohorte$alt) # Adding mutation id
+
+```
+
+Patient information was generated by :  "MitoMatcherAnalysis/Gen_random_variant_cohorte_info/random_gen_of_m3243_var_cohorte.py" 
+
+The information does not reflect the biological reality of a real patient.
+
+This cohort can be replaced by a true control cohort with a new data set like this one. Or integrated into the m3243 dataset, but with another column indicating whether it is a control or a m3243 patient.
+
+
+### addition of majority haplogroup 
+
+```{r}
+
+sample.info <- random_cohorte[, c("patient_id", "haplogroup")]
+sample.info$hap_maj <- substr(sample.info$haplogroup, 1, 2)
+
+sample.info.hv <- subset(sample.info, hap_maj == "HV")
+sample.info.l <- subset(sample.info, hap_maj %in% paste0("L", 0:6))
+sample.info.nothvandL <- subset(sample.info, !(hap_maj %in% c("HV", paste0("L", 0:6))))
+
+sample.info.nothvandL$hap_maj <- substr(sample.info.nothvandL$hap_maj, 1, 1)
+sample.info <- unique(rbind(sample.info.hv, sample.info.l, sample.info.nothvandL))
+
+# Haplogroup join
+
+random_cohorte <- random_cohorte %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+### addition of minority haplogroup
+
+```{r}
+
+sample.info = random_cohorte[,c("patient_id","haplogroup")]
+haplogroup = random_cohorte$haplogroup
+haplogroup= substr(haplogroup, start = 1, stop = 2) # Here in pairs to recover HV and L0, L1, etc.
+sample.info <- data.frame(sample.info, hap_min=haplogroup)
+
+sample.info = unique(sample.info)
+
+
+# Haplogroup join
+random_cohorte <- random_cohorte %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+## Annotation data
+
+The annotation table provides by the Stanford team with a control or point of comparison. The annotation table is available in: “../data/functional_variant_tRNA_anticodon_table.tsv”.
+
+The creation of this table is described on the github: https://github.com/EDePasquale/Mitochondrial_variants
+
+
+**ref article** 
+We utilized all possible mtDNA variations and protein-coding annotations as previously described by Miller et al, 2022. 
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9288977/. 
+Miller TE, Lareau CA, Verga JA, DePasquale EAK, Liu V, Ssozi D, Sandor K, Yin Y, Ludwig LS, El Farran CA, Morgan DM, Satpathy AT, Griffin GK, Lane AA, Love JC, Bernstein BE, Sankaran VG, van Galen P. Mitochondrial variant enrichment from high-throughput single-cell RNA sequencing resolves clonal populations. Nat Biotechnol. 2022 Jul;40(7):1030-1034. doi: 10.1038/s41587-022-01210-8. Epub 2022 Feb 24. PMID: 35210612; PMCID: PMC9288977.
+
+A quick explanation of how this table was created: 
+they started from the NC_012920 sequence, which is the revised Cambridge sequence for human mitochondrial DNA. Against this reference, they generated the set of possible variants (single substitution, without insertion or deletion). They used this table as input for the VEP algorithm. They also queried the Mitomap database for homoplasmy, heteroplasmy, diseases associated with the variants, status, Genebank count and frequence.
+
+**ref article** Using this landscape of 8,284 synonymous mutations, we annotated whether the codon in the reference or the alternate allele would create a canonical (i.e., Watson-Crick-Franklin, WCF) base-pairing between the codon and anticodon or would require wobble-dependent base-pairing for translation. 
+
+
+```{r}
+
+# Import data
+annotations <- fread("../data/functional_variant_tRNA_anticodon_table.tsv") %>% data.frame()
+annotations$mutation <- paste0("m", annotations$Position, annotations$Reference, ">", annotations$Variant) # Créer un identifiant pour chaque variant
+annotations$syn_annotation <- annotate_synonymous(annotations) # On donne à chaque variant une classe.
+annotations$id <- paste0(annotations$Reference,annotations$Position, annotations$Variant) # Création d'un autre identifiant.
+
+dim(annotations)
+head(annotations)
+```
+
+## Loading Mitochondrial genome loci informations
+
+
+```{r}
+genome_loci <- read.csv2(file = "../data/genome_loci_table.csv", header =TRUE)[-1]
+head(genome_loci)
+```
+
+This dataset corresponds to all matches between loci and positions in the mitochondrial genome.
+
+
+### Merging annotations and genome_loci data
+
+Integrate annotation information into the genome_loci array, since the annotations array contains information only for variants that introduce protein modifications.
+
+
+```{r}
+
+genome_merged <- left_join(genome_loci, annotations %>% dplyr::select(-Position, Reference, Variant), by = "id") # combination of genome_loci & annotations
+
+```
+
+### Merging genome_merged to m3243_var
+
+```{r}
+
+m3243_merged <- merge(m3243_var, genome_merged, by = "id", all.x=TRUE,sort=FALSE)
+colnames(m3243_merged)
+
+m3243_merged <- m3243_merged %>% dplyr::select(-chr, -ref, -alt, -Chr, -Position, -Ref, -Alt)
+
+```
+
+### Merging genome_merged to random_cohorte
+
+```{r}
+
+random_cohorte_merged <- merge(random_cohorte, genome_merged, by = "id", all.x=TRUE,sort=FALSE)
+colnames(random_cohorte)
+
+#random_cohorte_merged <- random_cohorte_merged %>% dplyr::select(-chr,-ref, -alt, -Chr, -Position, -Ref, -Alt)
+
+```
+
+
+# Analyses
+
+## Number of patient
+
+The dataset contains : 
+
+```{R}
+
+length(unique(m3243_var$patient_id))
+nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique()) 
+
+```
+
+`r length(unique(m3243_var$patient_id))` different patient IDs on `r nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique())` samples (id, tissue). We therefore have `r nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique()) - length(unique(m3243_var$patient_id))` samples belonging to an individual who therefore has several samples.
+
+
+
+```{r}
+
+m3243_var %>% dplyr::select(patient_id, tissue) %>% unique()
+
+```
+
+The array contains `r nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique())` rows
+
+```{r}
+
+length(unique(m3243_var$tissue)) # Type of tissue
+
+```
+
+
+## Distribution of mutation types
+
+What types of mutations are there?
+On which genes are they found? 
+How common are these mutations?
+How many silent mutations are there? 
+
+
+Only one mutation per individual should be taken into account, because two samples will have the same variants for the same individual.
+
+```{r}
+
+m3243_merged %>% 
+  dplyr::select(patient_id, id, Consequence) %>%
+  unique() %>%
+  group_by(Consequence) %>% 
+  dplyr::count() %>% 
+  arrange(desc(n)) %>% 
+  mutate(cohorte = "m3243") %>%
+  rbind(random_cohorte_merged %>%
+          dplyr::select(patient_id, id, Consequence) %>%
+          unique() %>%
+          group_by(Consequence) %>%
+          dplyr::count() %>%
+          arrange(desc(n)) %>%
+          mutate(cohorte = "controle")) %>%
+  ggplot(aes(x = Consequence, y = n, group = cohorte, fill = Consequence)) +
+  geom_col() + 
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5)) +
+  facet_grid(.~cohorte) + 
+  theme_minimal()+
+  ylab("Nombre de variants")+
+  xlab("Type de variant")+
+  theme(axis.title = element_text(size = 15), axis.text = element_text(size = 13), axis.text.x = element_text(angle = 45, hjust = 1), strip.text = element_text(size = 15))
+
+```
+**Note** : NA corresponds to variants not in coding regions like tRNA, D-loop variants, rRNA, intergenic.
+
+Is there an effect of cohort size? 
+
+```{r}
+m3243_type_var <- m3243_merged %>% 
+  group_by(Consequence) %>% 
+  dplyr::count() %>% 
+  arrange(desc(n)) %>% 
+  mutate(cohorte = "m3243")
+
+nrow(m3243 %>% dplyr::select(patient_id, tissue) %>% unique()) # Nb d'échantillons différents
+
+m3243_type_var$norm <- m3243_type_var$n/ nrow(m3243 %>% dplyr::select(patient_id, tissue) %>% unique())
+
+random_cohorte_type_var <- random_cohorte %>%
+  group_by(Consequence) %>%
+  dplyr::count() %>%
+  arrange(desc(n)) %>%
+  mutate(cohorte = "controle")
+
+random_cohorte_type_var$norm <- random_cohorte_type_var$n/nrow(random_cohorte_merged %>% dplyr::select(patient_id, tissue) %>% unique()) 
+
+type_var_norm <- rbind(random_cohorte_type_var, m3243_type_var)
+
+ggplot(type_var_norm, aes(x = Consequence, y = norm, group = cohorte, fill = Consequence)) +
+  geom_col() + 
+  geom_text(aes(label = round(norm)), position = position_stack(vjust = 0.5)) +
+  facet_grid(.~cohorte) + 
+  theme_minimal()+
+  ylab("Nombre de variants")+
+  xlab("Type de variant")+
+  theme(axis.title = element_text(size = 15), axis.text = element_text(size = 13), axis.text.x = element_text(angle = 45, hjust = 1), strip.text = element_text(size = 15))
+  
+  
+```
+
+### Focus on NA - intergenic, Dloop variants, tRNA, rRNA
+
+Where are these NA variants located ? 
+
+Cohorte m3243
+```{r}
+
+test <- subset(m3243_merged, is.na(Consequence))
+
+pos_count_df <- test %>% dplyr::select(mutation, pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+
+ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,5) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_void()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position of tRNA, rRNA and D-loop mutations in the m3243 cohort")
+
+```
+
+Random cohorte
+
+```{r}
+test <- subset(random_cohorte_merged, is.na(Consequence))
+
+pos_count_df <- test %>% dplyr::select(pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+
+ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,5) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_void()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Positions of tRNA, rRNA and D-loop from random cohorte.")
+
+```
+
+**Note**: This representation is the position of NA variants, non-protein-coding variants, i.e. variants for the D-loop, tRNA, rRNA and intergenic region, but we observe here for the random cohort that we have these variants everywhere. This is due to the generation of variants which has no biological significance as it is simply a random choice between 4 nucleotides. 
+
+**Upgrade**: To improve randomness, we should use the list of all possible mutations generated by Lareau and choose randomly from this list.  
+
+What about a complete count ? 
+
+Taking into account not only the distribution of the variants in the mtgenome but also the distribution inside the cohort.
+
+
+```{r}
+test <- subset(m3243_merged, is.na(Consequence))
+
+pos_count_df <- test %>% dplyr::select(patient_id, pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+
+m3243_NA <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,10) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position mutations NA dans la cohorte m3243 ")
+
+m3243_NA70 <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,70) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position of NA mutations in the m3243 cohort limited to 70")
+
+m3243_NA10 <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(0,10) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position of NA mutations in the m3243 cohort limited to 70")
+
+ggarrange(m3243_NA70, m3243_NA10)
+
+```
+
+
+
+Random cohorte (or control cohorte)
+
+```{r}
+
+test <- subset(random_cohorte_merged, is.na(Consequence))
+
+pos_count_df <- test %>% dplyr::select(patient_id, pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+
+control_NA <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,10) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position des mutations NA dans la cohorte contrôle")
+```
+
+```{r}
+ggarrange(control_NA, m3243_NA)
+```
+
+**Note** : as said before, perfect random distribution for random cohort due to unrealistic mt variants generation.
+
+
+### Focus on stop_retained and stop_lost variants
+
+
+```{r}
+
+m3243_merged %>% filter(Consequence == "stop_retained_variant")
+
+random_cohorte_merged %>% filter(Consequence == "stop_retained_variant")
+```
+
+```{r}
+
+m3243_merged %>% filter(Consequence == "stop_lost")
+
+random_cohorte_merged %>% filter(Consequence == "stop_lost")
+
+```
+
+
+### Focus on missense variants
+
+
+```{r}
+missense_m3243 <- m3243_merged %>% filter(Consequence == "missense_variant")
+
+missense_random <- random_cohorte_merged %>% filter(Consequence == "missense_variant")
+
+```
+
+```{r}
+dim(missense_m3243)
+
+dim(missense_random)
+```
+
+
+```{r}
+
+missense_m3243 %>% dplyr::select(mutation) %>% unique()
+
+missense_random %>% dplyr::select(mutation) %>% unique()
+```
+
+What is the distribution of these missense variants in the mitochondrial genome?
+
+random cohort
+```{r}
+
+pos_count_df <- missense_random %>% dplyr::select(patient_id, pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+random_missense_plot <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,70) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position of missense mutations in the control cohort")
+
+```
+
+
+Cohorte m3243
+```{r}
+
+pos_count_df <- missense_m3243 %>% dplyr::select(patient_id, pos) %>% unique() %>% group_by(pos) %>% dplyr::count()
+
+df <- data.frame(pos = 1:16569, angle = seq(0, (2*pi), by = (2*pi)/(16569-1)))
+
+mmdf <- merge(df, pos_count_df, by.x = "pos", by.y = 'pos')
+
+m3243_missense_plot <- ggplot(mmdf, aes(x = n, y = pos))+
+  geom_quasirandom(size = 0.1) + coord_polar(theta = "y") +
+  xlim(-5,70) + ylim(16569, 1) +
+  scale_color_manual(values = jdb_palette("corona"))+
+  theme_minimal()+
+  xlab("Position")+
+  ylab("Mutation")+
+  ggtitle("Position of missense mutations in the m3243 cohort")
+
+```
+
+```{r}
+
+ggarrange(random_missense_plot,m3243_missense_plot)
+
+```
+
+```{r}
+
+missense_m3243 %>% 
+  dplyr::select(patient_id, pos) %>% 
+  unique() %>% group_by(pos) %>% 
+  dplyr::count() %>% mutate(cohorte = "m3243") %>% 
+  arrange(desc(n)) %>%
+  rbind(missense_random %>% 
+          dplyr::select(patient_id, pos) %>% 
+          unique() %>% 
+          group_by(pos) %>% 
+          dplyr::count() %>% mutate(cohorte = "random") %>%
+          arrange(desc(n))) %>%
+  ggplot(aes(x = cohorte, y = n)) + 
+  geom_violin()+
+  theme_minimal()+
+  ylab("Comptage du nombre de mutations") + 
+  theme(axis.title = element_text(size = 15), axis.text = element_text(size = 13), axis.text.x = element_text(angle = 45, hjust = 1), strip.text = element_text(size = 15))
+
+
+```
+
+And now by gene? 
+
+```{r}
+
+# Comptage complet
+
+gene_size <- gene_size %>% rename(proteins = "Symbol", n = "gene_size") 
+#REVOIR 
+
+
+gene_count_missense_m3243 <- missense_m3243 %>% 
+  dplyr::select(patient_id, pos, Symbol) %>% 
+  unique() %>% group_by(Symbol) %>% 
+  dplyr::count() %>% mutate(cohorte = "m3243") %>% 
+  arrange(desc(n)) %>% left_join(gene_size, by = "Symbol")
+
+nb_ind_m3243 <- 85
+nb_ind_control <- 54
+  
+# Normalisation par la taille des gènes et aussi par la taille de la cohorte.
+gene_count_missense_m3243$prop <- gene_count_missense_m3243$n / (gene_count_missense_m3243$gene_size * nb_ind_m3243)
+
+
+gene_count_missense_control <- missense_control %>% 
+  dplyr::select(id_CRB, position, Symbol) %>% 
+  unique() %>% group_by(Symbol) %>% 
+  dplyr::count() %>% mutate(cohorte = "control") %>% 
+  arrange(desc(n)) %>% left_join(gene_size, by = "Symbol")
+
+# Normalisation par la taille des gènes et aussi par la taille de la cohorte.
+gene_count_missense_control$prop <- gene_count_missense_control$n / (gene_count_missense_control$gene_size * nb_ind_control)
+
+gene_count_cohortes <- rbind(gene_count_missense_control, gene_count_missense_m3243)
+
+
+ggplot(gene_count_cohortes, aes(x = Symbol, y = prop, fill = cohorte)) +
+  geom_bar(stat="identity")+ 
+  facet_grid(.~cohorte) + 
+  theme_minimal() + 
+  ylab("Valeurs de comptage de mutation normalisées par 
+       la taille de gène et de cohorte") +
+  theme(axis.title = element_text(size = 15), axis.text = element_text(size = 10), axis.text.x = element_text(angle = 45, hjust = 1), strip.text = element_text(size = 15))
+
+```
+
+
+Analyse des variants faux sens :
+
+Il faut d'abord sauvegarder les listes des variants faux-sens par cohorte :
+
+```{r}
+
+m3243_merged %>% 
+  filter(Consequence == "missense_variant") %>% 
+  dplyr::select(id) %>% 
+  unique() %>% 
+  pull(id)  %>% 
+  write(file = "../transformed_data/24-07-24_data/missense_variants_m3243.txt", sep = ";")
+
+
+control_cohorte_merged %>%
+  filter(Consequence == "missense_variant") %>%
+  dplyr::select(id) %>%
+  unique() %>%
+  pull(id) %>%
+  write(file = "../transformed_data/24-07-24_data/missense_variants_control.txt", sep = ";")
+
+```
+
+Ensuite il faut lancer le script pour les identifier.
+
+Le script utilisé pour la recherche des variants faux-sens : 
+
+```{python, eval = FALSE}
+
+import sys
+import csv
+import os
+
+# Vérifier si les fichiers d'entrée et de sortie sont spécifiés
+if len(sys.argv) != 4:
+    print("Utilisation : python script.py <fichier_variants.txt> <fichier_recherche_pathos.csv> <output.txt>")
+    sys.exit(1)
+
+input_variants = sys.argv[1]
+search_file = sys.argv[2]
+output_file = sys.argv[3]
+
+# Vérifier si les fichiers d'entrée existent
+if not all(map(lambda x: os.path.isfile(x), [input_variants, search_file])):
+    print("Un ou plusieurs fichiers d'entrée sont manquants.")
+    sys.exit(1)
+
+# Ouvrir le fichier de sortie en mode écriture
+with open(output_file, 'w') as outfile:
+    # Lire les variants à partir du fichier d'entrée
+    with open(input_variants, 'r') as infile:
+        for line in infile:
+            # Extraire le variant de la ligne courante
+            variant = line.strip().split(';')[0]
+
+            # Rechercher la présence du variant dans le fichier de recherche
+            with open(search_file, 'r') as searchfile:
+                reader = csv.reader(searchfile, delimiter=';')
+                found = False
+                for row in reader:
+                    if row[3] == variant:
+                        outfile.write(';'.join(row) + '\n')
+                        found = True
+                        break
+
+                # Écrire "absent" dans le fichier de sortie si le variant n'est pas trouvé
+                # if not found:
+                #     outfile.write("absent\n")
+
+print(f"Le résultat de la recherche a été enregistré dans {output_file}")
+
+```
+
+
+```{r}
+
+test_m3243 <- read.csv2("../transformed_data/24-07-24_data/research_variants_m3243.csv", header = FALSE)
+test_control <- read.csv2("../transformed_data/24-07-24_data/research_variants_control.csv", header=FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+Dans le lot on retrouve des variants multiples. Mais aussi et surtout des mutations non codantes pour des protéines donc ARNr, ARNt et non codantes.
+
+La majorité des mutations sont des mutations qui ne se trouvent pas sur les gènes.
+Est-ce que ces mutations sont bien à côté des gènes ou alors est-ce un problème du tableau annotation ? 
+
+
+Quels gènes présentent le plus de mutations ? 
+
+
+```{r}
+
+mt_gene_size <- fread("../raw_data/mtGeneSize.txt")
+
+#Changer les noms des Gènes (PS : le faire directement dans le fichier prend surement moins de temps)
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "ATPase6", "ATP6")
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "ATPase8", "ATP8")
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COIII", "CO3")
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COII", "CO2")
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COI", "CO1")
+mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "Cytb", "CYB")
+
+
+m3243_mutation_count_by_gene <- m3243_merged %>% group_by(Symbol) %>% dplyr::count() %>% rename(Symbol = "proteins")
+
+global_gene_count_normalized <- m3243_mutation_count_by_gene %>%
+  left_join(mt_gene_size, by = "proteins") %>% 
+  mutate(normalizationByGeneSize = n.x /n.y) %>% 
+  arrange(desc(normalizationByGeneSize))
+
+global_gene_count_normalized 
+
+# juste pour tester
+ggscatter(global_gene_count_normalized, x = "n.x", y = "n.y",
+          add = "reg.line",
+          cor.coef = TRUE, cor.method = "pearson")
+```
+En normalisant par la taille, on voit que c'est l'ATP6 puis CYB puis ND2. Les gènes présentant le moins de mutations sont le CO2, le ND4L et l'ATP8. 
+
+
+De retour sur les types de variants, j'observe un stop_retained_variant : 
+
+```{r}
+
+m3243_merged %>% filter(Consequence == "stop_retained_variant")
+
+```
+
+Pour les variants faux-sens : 
+
+Combien par individus ?
+
+```{r}
+
+m3243_merged %>% 
+  filter(Consequence == "missense_variant") %>% 
+  group_by(patient_id, tissue) %>% 
+  dplyr::count() %>% 
+  arrange(desc(n)) %>%
+  ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 2, fill = "blue", color = "black")+
+  theme_minimal()
+ 
+```
+
+Est-ce que certains variants faux-sens sont davantages retrouvés ? 
+
+```{r}
+
+# je rends unique chaque mutation par individu pour ne pas avoir l'effet de deux échantillons pour un même individu.
+
+m3243_merged %>% 
+  filter(Consequence == "missense_variant") %>%
+  dplyr::select(patient_id, mutation) %>%
+  unique() %>%
+  group_by(mutation) %>%
+  dplyr::count() %>%
+  arrange(desc(n))
+
+# Au dessus de n = 74 * 5/100 = 3.7 variants, on peut les considérer comme fréquents dans la cohorte.
+
+
+list_frequent_variants <- m3243_merged %>% filter(Consequence == "missense_variant") %>% dplyr::select(patient_id, mutation) %>% unique() %>% group_by(mutation) %>% dplyr::count() %>% filter(n >= 5) %>% pull(mutation)
+```
+
+12 variants peuvent être considérés comme fréquents dans la population. Ces variants sont : 
+`r m3243_merged %>% filter(Consequence == "missense_variant") %>% dplyr::select(patient_id, mutation) %>% unique() %>% group_by(mutation) %>% dplyr::count() %>% filter(n >= 5) %>% pull(mutation)`
+
+Sont-ils également fréquents dans la population ?
+
+
+```{r}
+
+m3243_merged[m3243_merged$mutation %in% list_frequent_variants,] %>% 
+  dplyr::select(mutation, patient_id, GB.Frequency) %>% 
+  mutate(GB.Frequency = as.numeric(GB.Frequency)) %>%
+  arrange(GB.Frequency)
+  
+```
+
+
+
+Est-ce que ces variants faux-sens sont associés à la liste pathogène ?
+
+92 mutations variants faux-sens dans la cohorte m3243.
+
+```{r}
+
+m3243_merged %>% 
+  filter(Consequence == "missense_variant") %>% 
+  dplyr::select(id) %>% 
+  unique() %>% 
+  pull(id)  %>% 
+  write(file = "../transformed_data/missense_variants.txt", sep = ";")
+
+```
+
+
+```{python, eval = FALSE}
+
+import sys
+import csv
+import os
+
+# Vérifier si les fichiers d'entrée et de sortie sont spécifiés
+if len(sys.argv) != 4:
+    print("Utilisation : python script.py <fichier_variants.txt> <fichier_recherche_pathos.csv> <output.txt>")
+    sys.exit(1)
+
+input_variants = sys.argv[1]
+search_file = sys.argv[2]
+output_file = sys.argv[3]
+
+# Vérifier si les fichiers d'entrée existent
+if not all(map(lambda x: os.path.isfile(x), [input_variants, search_file])):
+    print("Un ou plusieurs fichiers d'entrée sont manquants.")
+    sys.exit(1)
+
+# Ouvrir le fichier de sortie en mode écriture
+with open(output_file, 'w') as outfile:
+    # Lire les variants à partir du fichier d'entrée
+    with open(input_variants, 'r') as infile:
+        for line in infile:
+            # Extraire le variant de la ligne courante
+            variant = line.strip().split(';')[0]
+
+            # Rechercher la présence du variant dans le fichier de recherche
+            with open(search_file, 'r') as searchfile:
+                reader = csv.reader(searchfile, delimiter=';')
+                found = False
+                for row in reader:
+                    if row[3] == variant:
+                        outfile.write(';'.join(row) + '\n')
+                        found = True
+                        break
+
+                # Écrire "absent" dans le fichier de sortie si le variant n'est pas trouvé
+                # if not found:
+                #     outfile.write("absent\n")
+
+print(f"Le résultat de la recherche a été enregistré dans {output_file}")
+
+```
+
+
+après avoir lancé l'analyse, on obtient : 
+
+```{r}
+
+missense_analysis <- read.csv2(file = "../transformed_data/searched_pathos_missense_variants.csv", header = FALSE)
+
+```
+
+```{r}
+# Récupération des missense_pathos
+
+vec_missense_pathos <- missense_analysis %>% pull(V4)
+length(vec_missense_pathos)
+```
+
+```{r}
+m3243_missense_pathos <- m3243_merged[m3243_merged$id %in% vec_missense_pathos,]
+```
+
+
+
+
+## Variants synonymes 
+
+```{r}
+
+m3243_syn <- m3243_merged %>% filter(Consequence == "synonymous_variant")
+control_syn <- control_cohorte_merged %>% filter(Consequence == "synonymous_variant")
+# Il faudrait filtrer à l'avance le fichier control_syn pour enlever certaines colonnes redondantes
+
+```
+
+
+### Analyse 
+
+Est-ce que fusionner les deux tableaux est pertinent ?
+
+
+#### Général 
+
+Quelle est la distribution du nombre de variants synonymes par patient ? 
+
+
+```{r}
+
+m3243_syn %>% 
+  group_by(patient_id, tissue) %>% 
+  dplyr::count() %>% 
+  ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 1, fill = "blue", color = "black")+
+  theme_minimal() +
+  scale_x_continuous(limits = c(0,40))
+
+
+control_syn %>%
+  group_by(id_CRB, tissue) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 1, fill = "red", color ="black")+
+  theme_minimal()+
+  scale_x_continuous(limits = c(0,40))
+
+length(unique(control_syn$id_CRB)) #Même nombre de lignes. Il semble y avoir un ID_CRB par individu par échantillon. Donc je ne sais pas si l'ID_CRB représente 1 individu ou 1 échantillon. Demander.
+
+# Voir statistiquement si le nombre de variants diffère entre les deux cohortes.
+
+
+```
+
+Quelle est la distribution des variants synonymes au niveau des gènes ?
+
+On prend tous les variants pas le regard d'une distribution.
+
+```{r}
+# Import taille gène et modif
+geneSize <- fread("../raw_data/mtGeneSize.txt")
+colnames(geneSize) <- c("Symbol", "size")
+
+
+control_syn_gene <- control_syn %>%
+  group_by(Symbol) %>%
+  dplyr::count() %>%
+  mutate(cohorte = "control")
+
+
+m3243_syn %>%
+  group_by(Symbol) %>%
+  dplyr::count() %>%
+  mutate(cohorte = "m3243") %>%
+  rbind(control_syn_gene) %>%
+  left_join(geneSize, by = "Symbol") %>%
+  mutate(Norm = n/size) %>% arrange(desc(Norm)) %>%
+  ggplot(aes(fill = cohorte, y = Norm, x = Symbol)) +
+  geom_bar(position = "dodge", stat = "identity") + 
+  theme_minimal()
+  
+
+## revoir cette normalisation
+
+
+```
+
+
+```{r}
+
+m3243_syn %>%
+  group_by(Symbol) %>%
+  dplyr::count() %>%
+  mutate(cohorte = "m3243") %>%
+  rbind(control_syn_gene) %>%
+  left_join(geneSize, by = "Symbol") %>%
+  mutate(Norm = n/(size*sum(n))) %>% arrange(desc(Norm)) %>%
+  ggplot(aes(fill = cohorte, y = Norm, x = Symbol)) +
+  geom_bar(position = "dodge", stat = "identity") + 
+  theme_minimal()+
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 14))
+```
+
+Quelle est la distribution des synonymes variants dans les différentes classes selon différents paramètres (haplogroupes, gènes, etc.) ?
+
+
+Dans toute les cohortes : 
+
+```{r}
+
+
+
+all_df <- rbind(
+  count_me(control_syn) %>% mutate(cohorte = "control"),
+  count_me(m3243_syn) %>% mutate(cohorte = "m3243")
+)
+
+
+p1bar <- ggplot(all_df, aes(x = syn_annotation, y = perc, fill = cohorte)) +
+  geom_bar( stat = "identity", position = "dodge", color = "black",) +
+  scale_fill_manual(values = c("lightgreen","lightyellow"))+
+  pretty_plot(fontsize = 12) + L_border() + scale_y_continuous(expand = c(0,0), limits = c(0,80))+ 
+  labs(x = "", y = "% of synonymous mtDNA variants") + theme(legend.position = "right") +
+  theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15))
+  
+
+p1bar
+
+process_stats_syn_type(df = m3243_syn, df_ref = control_syn, count_df = FALSE, count_df_ref = FALSE)
+
+```
+
+
+Chargment données cliniques
+
+```{r}
+clinical_info <- read.csv2(file = "../transformed_data/17-07-24_data/synthetized_clinical_table_reduce.csv")
+```
+
+
+Quels sont les variants sur les ARNt dans l'esnemble de la cohorte de patients :
+
+Ajout des informations Apogee2
+
+```{r}
+vec_name_tRNA <- scan("../raw_data/tRNA_names.txt",character(), quote = "", sep = ",") #Chargemetn du nom des ARNt
+
+m3243_merged <- m3243_merged %>% mutate(type_variant = case_when(
+  Biotype == "protein_coding" ~ "protein_coding", # variants protéiques
+    Locus %in% c("MT-RNR1", "MT-RNR2") ~ "RNAr_coding", # Variants ARNr
+    Locus %in% vec_name_tRNA ~ "RNAt_coding", # Variants ARNt
+    Locus == "MT-CR" ~ "CR_coding"# Variants Coding region
+))
+
+apogee_trna <- read.csv2("../raw_data/apogee2_trna.csv")
+
+apogee_trna$id <- paste0(apogee_trna$Ref, apogee_trna$Pos, apogee_trna$Alt)
+```
+
+
+```{r}
+
+m3243_trna <- m3243_merged %>% left_join(apogee_trna %>% dplyr::select(id, t.APOGEE.score, t.APOGEE.unbiased.score), by = "id") %>% filter(Locus %in% vec_name_tRNA)
+
+```
+
+```{r}
+tRNAL2_patient <- m3243_trna %>%  filter(type_variant == "RNAt_coding" & Locus == "MT-TL2") %>% dplyr::select(id, heteroplasmy_rate, patient_id, haplogroup, t.APOGEE.score, t.APOGEE.unbiased.score) %>% pull(patient_id)
+```
+
+
+
+```{r}
+m3243_trna %>% 
+  dplyr::select(patient_id, id) %>%
+  unique() %>%
+  group_by(id) %>%
+  dplyr::count() %>%
+  left_join(m3243_trna %>% dplyr::select(id, t.APOGEE.unbiased.score), by = "id") %>%
+  mutate(t.APOGEE.unbiased.score = as.numeric(t.APOGEE.unbiased.score)) %>%
+  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
+  ggplot(aes(x = t.APOGEE.unbiased.score, y = n)) +
+  geom_point()+
+  geom_text_repel(mapping = aes(label = id)) +
+  theme_minimal()+
+  xlab("Score APOGEE2")+
+  ylab("Nombre de porteurs")+
+  ggtitle("Evolution du score apogee2 en fonction du nombre de porteurs pour les ARNt")
+
+```
+
+
+A quelles catégories appartiennent ces patients ?
+
+```{r}
+clinical_info %>% filter(patient_id %in% tRNAL2_patient)
+
+clinical_info %>% filter(patient_id %in% tRNAL2_patient) %>% group_by(Categorie)%>% dplyr::count() %>% ggplot(aes(x = Categorie, y = n, fill = Categorie))+
+  geom_col() +
+  theme_minimal()+
+  ylab("Nombre de porteurs")+
+  xlab("Catégories")
+
+clinical_info %>% filter(patient_id %in% tRNAL2_patient, Categorie %in% c("1","2"))
+
+```
+
+
+### Les variants protéiques
+
+Import des informations d'APOGEE2
+
+```{r}
+apogee_protein <- read.csv(file = "../raw_data/apogee2_score_filtered.txt", sep= "\t")
+apogee_protein$id <- paste0(apogee_protein$Ref, apogee_protein$Start, apogee_protein$Alt)
+```
+
+
+```{r}
+
+m3243_protein <- m3243_merged %>% filter(type_variant == "protein_coding") %>% left_join(apogee_protein, by = "id")
+
+```
+
+
+```{R}
+
+m3243_protein%>% 
+  filter(Consequence == "missense_variant") %>%
+  dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2) %>%
+  unique() %>%
+  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
+  ggplot(aes(x = APOGEE2_score, y = APOGEE2_probability, color = APOGEE2))+
+  geom_point() + 
+  theme_light() + 
+  ylab("Probabilité APOGEE2")+
+  xlab("Score APOGEE2")+
+  ggtitle("Evolution du score APOGEE2 en fonction de la probabilité.")+
+  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+ 
+  geom_text_repel(aes(label = id), fill = "white", color = "black", nudge_y = 0.03)
+
+```
+
+
+JE peux représenter les mutations avec le score le plus élevé et avec le plus de présence
+
+```{r}
+m3243_protein %>% filter(Consequence == "missense_variant") %>%
+  dplyr::select(patient_id, id) %>%
+  group_by(id) %>%
+  dplyr::count() %>%
+  left_join(m3243_protein %>% dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2), by = "id") %>%
+  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
+  ggplot(aes(x = APOGEE2_score, y = n, color = APOGEE2)) +
+  geom_point() +
+  theme_light() +
+  ylab("Nombre de porteurs")+
+  xlab("Score APOGEE2")+
+  ggtitle("Evolution du score APOGEE2 en fonction du nombre de porteurs.")+
+  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+
+  geom_text_repel(aes(label = id), color = "black")
+
+m3243_protein%>%
+  filter(Consequence == "missense_variant") %>%
+  dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2) %>%
+  unique() %>%
+  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
+  ggplot(aes(x = APOGEE2_score, y = APOGEE2_probability, color = APOGEE2))+
+  geom_point() +
+  theme_light() +
+  ylab("Probabilité APOGEE2")+
+  xlab("Score APOGEE2")+
+  ggtitle("Evolution du score APOGEE2 en fonction de la probabilité")+
+  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+
+  geom_text_repel(aes(label = id), fill = "white", color = "black", nudge_y = 0.03)
+
+
+```
+
+
+# Session info
+
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+

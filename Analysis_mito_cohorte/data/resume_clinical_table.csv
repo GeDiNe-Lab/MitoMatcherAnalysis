@@ -1,0 +1,82 @@
+patient_id	sex	age_of_onset	age_at_sampling	tissue	type	haplogroup	m3243_het	m3243_het_normalized
+101409034656	M		41	blood,muscle		T2b4a	30.17,75.49	100,75.49
+C08956	F		23,50	blood	index-thermo	H6a1a	45.05,17.9	100,75.75
+C08543	M		14	urine,blood	index-thermo	J2b1a	96.5,58.1791	97.26,100
+1019BI000276	F		18	blood,urine		F1d	60.16,89.51	100,96.51
+1022BI000597	F		6	blood,urine		L1c3a	16.83,17.46	25.58,20.49
+C04549	M		54	blood	index-thermo	T2b4	22.5113	100
+C04618	M		70	blood	index-thermo	H5a7	16.4082	100
+C12717	F		34	blood	index-thermo	M71b	29.6648	86.52
+C04501	F		46	blood	index-thermo	ROa	26.4132	100
+220110022	M	Childhood	39	urine	index-illumina	F1a1a	66.0	55.32
+190126606	F	Adulthood (~20)	28	urine	index-thermo	H11a	61.3	76.66
+220142045	F	Unknown	54	blood	index-illumina	U5a1b1	22.0	100
+180114196	M	Adolescence (~13)	14	urine	index-thermo	U3b3	91.0	90.89
+C05116	F		41	blood	index-thermo	B4a1a1c	36.6	100
+1020BI001204	M		73	buccal		J1c5	17.89	17.89
+220189728	M	Juvenile onset (between 1 year old and 12 years old)	36	urine	index-illumina	H3s	91.8	91.9
+C05411	F		52	blood	index-thermo	H3s	19.75	87.56
+C04490	M		58	blood	index-thermo	H1	15.95	81.31
+C07226	F		51	blood	index-thermo	R9c1b1	21.6108	93.61
+220132832	F	None	15	urine	index-illumina	H1+16189	70.7	84.83
+C11643	F		60	muscle	index-thermo	T2a1a8	81.0716	81.0716
+230036259	M	Childhood (~2 years old)	4	urine	index-illumina	C1b2	56.6	42.82
+210072894	M	18	28	urine	index-thermo	H49	93.8	94.32
+230171134	M	Unknown	23	urine	index-illumina	L2b1b	93.8	94.32
+BFAM0358	M		48	muscle	index-thermo	H6a1a	55.65	55.65
+180171040	M	Adulthood (~50)	58	blood	index-thermo	T2b19	18.3	93.29
+170188627	F	33	43	urine	index-thermo	I3a	51.7	66.69
+180004443	F	Childhood (~10)	17	urine	index-thermo	H24a	82.6	92.94
+170146527	F	Adulthood (~34)	49	blood	index-thermo	H3j	16.0	66.15
+C10491	M		35	blood	index-thermo	H1c	42.042	100
+1020BI001233	M		53	muscle		L1	85.45	85.45
+C07778	F		44	blood	index-thermo	U4a1	33.0292	100
+220085107	M	26	26	blood	index-illumina	HV	34.4	83.28
+210049383	M	Adulthood	56	urine	index-thermo	U5b1f1	74.4	67.34
+BFAM5861	M		41	blood	index-thermo	U2d	11.7059	40.18
+220058536	F	None	65	urine	index-illumina	J1c8a	16.5	19.12
+BFAM6695	F		33	blood	index-thermo	H3	16.016	45.64
+BFAM5760	F		37	blood	index-thermo	T2b	31.6316	98.92
+1018BI000152	M		68	blood		T2a1a	11.1	71.41
+C04369	M		72	heart	index-thermo	T2e1a1	94.2471	94.2471
+C10941	F		35	blood	index-thermo	H1bb	13.0065	38.83
+101709069503	M		67	fibroblast		H3s	71.05	71.05
+170131062	F	<1 year old	0	urine	index-thermo	U8a1a1b	82.7	92.99
+C04561	M		55	blood	index-thermo	H1bs*	19.1191	90.89
+BFAM1719	M		23	blood	index-thermo	T2b	72.15	100
+240021902	M	Unknown	60	urine	index-illumina	H79a	74.5	67.49
+BFAM7485	F		53	blood	index-thermo	K1b1a	53.95	100
+1022BI001032	F		50	blood		H+16311	15.46	65.43
+220151449	F	None	77	urine	index-illumina	H1+16189	7.4	7.0
+220048680	M	Adult (22 years old)	37	urine	index-illumina	H6a1a	76.8	70.85
+190061974	M	Childhood (~6 years old)	14	urine	index-thermo	L1c3a1b	93.0	93.37
+BFAM1164			31	blood	index-thermo	H11a	49.324	100
+1019BI000330	F		76	blood		U5a1	12.49	96.79
+220180245	F	Adult (34 years old)	36	urine	index-illumina	T2b3b	37.2	48.65
+C12257	F		34	blood	index-thermo	M35a1	22.0	64.16
+C09341	M		38	blood	index-thermo	H1e1a2	9.9099	31.72
+1021BI000841	F		40	blood		H4a1c	26.65	89.37
+C04811	M		63	blood	index-thermo	U8a1a	19.45	100
+230073517	F	Adult (30 years old)	69	urine	index-illumina	C1b2	38.0	49.73
+1018BI000514	F		16	blood		I2	74.05	100
+210026424	F	Adolescence (~15)	42	urine	index-thermo	J1c10	50.4	65.21
+1019BI000387	M		52	blood		H1ao1	22.25	98.65
+C06647	M		57	blood	index-thermo	L2b1a2	23.75	100
+1021BI001736	M		55	blood		K1a	21.79	100
+C11395	M		32	blood	index-thermo	H6a1a	11.1167	30.95
+C07595	M		44	blood	index-thermo	M2a1c+207*	27.2409	100
+C12348	M		48	heart	index-thermo	H15a1	88.4	88.4
+BFAM1217	F		38	blood	index-thermo	K2b1	73.2	100
+240033620	M	Neonatal	9	urine	index-illumina	R0a1a	96.2	96.95
+230141285	M	44	72	muscle	index-illumina	U2e1a1a	62.9	62.9
+230083235	F	Unknown	40	urine	index-illumina	K1d	40.8	53.43
+230123980	F	Adult (20 years old)	49	blood	index-illumina	T2b4a	20.5	84.76
+220045481	M	27	74	urine	index-illumina	L2c5	54.6	40.33
+230038867	F	Neonatal	56	urine	index-illumina	W1c	31.2	40.33
+1022BI000338	F		71	urine		L3e2b2	12.26	13.24
+101706071956	M		69	blood		H1e8	10.05	66.18
+C13225	M		2	blood	index-thermo	L3b1a1a	91.6917	100
+190073742	F	40	61	muscle	index-thermo	H2a2a1d	69.8	69.8
+C09242	M		45	muscle	index-thermo	H2a2a1	71.7085	71.7085
+220100155	F	Unknown	14	urine	index-illumina	H6a1b2	21.1	25.74
+C07734	F		58	blood	index-thermo	U3b3	35.6678	100

@@ -1,0 +1,522 @@
+---
+title: 'Analysis report: Clinical analysis of patients m3243'
+author: "Axel Bonesteve"
+date: "2024-07-17"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(eval = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+**Laboratory Notebook**
+**Experience of Wednesday 17-07-2024**
+
+The data used in this report are mitochondrial genome variant data from patients carrying the m3243A>G mutation, the mutation responsible for MELAS syndrome. To date, the data includes 36 samples from Angers, 25 samples from Bicêtre and 40 samples from Nice. The aim is to analyze associated HPO terms and severity in relation to other parameters such as % heteroplasmy, etc.
+
+
+# Pre-analysis parameters
+
+## General parameters
+
+```{r}
+Sys.setenv(LANGUAGE='en')
+
+```
+
+## Libraries importation
+
+```{r}
+library(tidyverse)
+library(data.table)
+library(ggpubr)
+library(FactoMineR)
+library(factoextra)
+library(sessioninfo)
+```
+
+# Data importation
+
+## Clinical data
+
+### Loading clinical data
+
+```{r}
+
+m3243_clinical <- read.csv2("../data/resume_clinical_table.csv", header= TRUE, sep="\t")
+
+``` 
+
+“resume_clinical_table.csv” contains only patient information in the form of `colnames(m3243_clinical)`.
+Here, I use the resume_clinical_table produced by the pipeline as an example, but this table has been designed to summarize each patient's information on a single line. The tissue and heteroplasmy fields are separated by commas if a patient has more than one tissue sample.
+
+But for analysis, it's better to use a dataset as one line is a sample - see below Loading m3243 var
+
+## m3243 var information
+
+
+### Loading m3243 var
+
+```{r}
+
+m3243_var <- read.csv2("../data/concatenate_variants.csv") %>%
+  select(patient_id, sex, age_of_onset, age_at_sampling, tissue, type, haplogroup, m3243_het, m3243_het_normalized) %>% unique()
+
+m3243_var$pos <- as.integer(m3243_var$pos)
+
+```
+
+Keeping only patient information but one line corresponds to one sample.
+
+
+### addition of majority haplogroup on clinical data
+
+```{r}
+
+sample.info <- m3243_var[, c("patient_id", "haplogroup")]
+sample.info$hap_maj <- substr(sample.info$haplogroup, 1, 2)
+
+sample.info.hv <- subset(sample.info, hap_maj == "HV")
+sample.info.l <- subset(sample.info, hap_maj %in% paste0("L", 0:6))
+sample.info.nothvandL <- subset(sample.info, !(hap_maj %in% c("HV", paste0("L", 0:6))))
+
+sample.info.nothvandL$hap_maj <- substr(sample.info.nothvandL$hap_maj, 1, 1)
+sample.info <- unique(rbind(sample.info.hv, sample.info.l, sample.info.nothvandL))
+
+# Haplogroup join
+
+m3243_var <- m3243_var %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+### addition of minority haplogroup on clinical data
+
+```{r}
+
+sample.info = m3243_var[,c("patient_id","haplogroup")]
+haplogroup = m3243_var$haplogroup
+haplogroup= substr(haplogroup, start = 1, stop = 2) # Here in pairs to recover HV and L0, L1, etc.
+sample.info <- data.frame(sample.info, hap_min=haplogroup)
+
+sample.info = unique(sample.info)
+
+
+# Haplogroup join
+m3243_var <- m3243_var %>%
+  left_join(sample.info[,c(1,3)], by = "patient_id")
+
+```
+
+
+
+
+**Verification** : 
+
+```{r}
+
+head(m3243_var %>% select(patient_id, haplogroup, hap_maj, hap_min))
+
+```
+
+# Analyses
+
+## Gender distribution
+
+```{r}
+
+m3243_var %>% 
+  dplyr::select(patient_id, sex) %>% 
+  distinct() %>%
+  count(sex) %>%
+  mutate(sex = as.factor(sex)) %>%
+  ggplot(aes(x = sex, y = n)) +
+  geom_col()+
+  theme_minimal()
+
+```
+
+
+## Tissu distribution
+
+```{r}
+
+m3243_var %>% 
+  group_by(tissue) %>%
+  dplyr::count() %>%
+  mutate(tissue = as.factor(tissue)) %>%
+  data.frame() %>%
+  ggplot(aes(x = tissue, y = n)) + 
+  geom_col() +
+  theme_minimal()
+
+
+## pourquoi certians patients ont les deux ? 
+```
+
+
+## Age at sampling distribution
+
+```{r}
+
+ggplot(m3243_var, aes(x = age_at_sampling)) +
+  geom_histogram() + 
+  theme_minimal()
+
+```
+
+## Haplogroup distribution
+
+### General
+
+```{r}
+
+hap_m3243 <- m3243_var %>% 
+  dplyr::select(patient_id, hap) %>% 
+  unique() %>%
+  group_by(hap) %>% 
+  dplyr::count()
+
+pie(hap_m3243$n, labels = hap_m3243$hap)
+
+hap_m3243 %>% arrange(desc(n))
+```
+
+### intra_hap : H
+
+```{r}
+
+H_hap_m3243 <- m3243_var %>% 
+  filter(hap_maj == "H") %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(H_hap_m3243$n, labels = H_hap_m3243$hap_min)
+
+H_hap_m3243 %>% arrange(desc(n))
+```
+### intra_hap : T
+
+```{r}
+
+T_hap_m3243 <- m3243_var %>% 
+  filter(hap_maj == "T") %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(T_hap_m3243$n, labels = T_hap_m3243$hap_min)
+
+T_hap_m3243 %>% arrange(desc(n))
+```
+
+
+### intra_hap : U
+
+```{r}
+
+U_hap_m3243 <- m3243_var %>% 
+  filter(hap_maj== "U") %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(U_hap_m3243$n, labels = U_hap_m3243$hap_min)
+
+U_hap_m3243 %>% arrange(desc(n))
+```
+
+### intra_hap : J
+
+```{r}
+
+J_hap_m3243 <- m3243_var %>% 
+  filter(hap_maj== "J") %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(J_hap_m3243$n, labels = J_hap_m3243$hap_min)
+
+J_hap_m3243 %>% arrange(desc(n))
+```
+
+### intra_hap : K
+
+```{r}
+
+K_hap_m3243 <- m3243_var %>% 
+  filter(hap_maj== "K") %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(K_hap_m3243$n, labels = K_hap_m3243$hap_min)
+
+K_hap_m3243 %>% arrange(desc(n))
+```
+
+### intra_hap : L
+
+```{r}
+
+L_hap_m3243 <- m3243_var %>% 
+  filter(str_detect(hap_maj, "L")) %>%
+  dplyr::select(patient_id, hap_min) %>%
+  unique() %>%
+  group_by(hap_min) %>%
+  dplyr::count()
+
+pie(L_hap_m3243$n, labels = L_hap_m3243$hap_min)
+
+L_hap_m3243 %>% arrange(desc(n))
+```
+
+## Heteroplasmy distribution
+
+```{r}
+
+m3243_var %>% 
+  dplyr::select(patient_id, tissue, m3243_het_normalized) %>%
+  mutate(normalisation = "oui") %>% 
+  rename(valeur_m3243_het = m3243_het_normalized) %>%
+  rbind(m3243_var %>%
+          dplyr::select(patient_id, tissue, m3243_het) %>%
+          mutate(normalisation = "non")%>%
+          rename(valeur_m3243_het = m3243_het)) %>%
+  mutate(valeur_m3243_het = as.numeric(valeur_m3243_het)) %>%
+  ggplot(aes(x = valeur_m3243_het, fill = normalisation)) +
+  geom_histogram()+
+  facet_wrap(.~normalisation) +
+  theme_minimal()
+
+
+```
+
+### Neonatal to 18 years old
+
+```{r}
+
+m3243_het <- m3243_var %>% 
+  dplyr::select(patient_id, tissue, age_at_sampling, m3243_het_normalized) %>%
+  filter(age_at_sampling <= 18) %>%
+  mutate(normalisation = "oui") %>% 
+  rename(valeur_m3243_het= m3243_het_normalized) %>%
+  rbind(m3243_var %>%
+          dplyr::select(patient_id, tissue, age_at_sampling, m3243_het) %>%
+          filter(age_at_sampling <= 18) %>%
+          mutate(normalisation = "non") %>%
+          rename(valeur_m3243_het = m3243_het)) %>%
+  mutate(valeur_m3243_het = as.numeric(valeur_m3243_het)) %>%
+  ggplot(aes(x = valeur_m3243_het, fill = normalisation)) +
+  geom_histogram()+
+  facet_grid(.~normalisation)+
+  theme_minimal()
+
+m3243_age <- m3243_var %>% 
+  dplyr::select(patient_id, age_at_sampling) %>%
+  unique() %>%
+  filter(age_at_sampling <= 18) %>%
+  ggplot() +
+  geom_histogram(mapping = aes(x = age_at_sampling))+
+  theme_minimal()
+
+ggarrange(m3243_het, m3243_age, ncol = 1)
+  
+  
+```
+
+### 18 years old to 
+
+```{r}
+
+m3243_het <- m3243_var %>% 
+  dplyr::select(patient_id, tissue, age_at_sampling, m3243_het_normalized) %>%
+  filter(age_at_sampling >= 18) %>%
+  mutate(normalisation = "oui") %>% 
+  rename(valeur_m3243_het = m3243_het_normalized) %>%
+  rbind(m3243_var %>%
+          dplyr::select(patient_id, tissue, age_at_sampling, m3243_het) %>%
+          filter(age_at_sampling >= 18) %>%
+          mutate(normalisation = "non")%>%
+          rename(valeur_m3243_het = m3243_het)) %>%
+  mutate(valeur_m3243_het = as.numeric(valeur_m3243_het)) %>%
+  ggplot(aes(x = valeur_m3243_het, fill = normalisation)) +
+  geom_histogram()+
+  facet_grid(.~normalisation)+
+  theme_minimal()
+
+m3243_age <- m3243_var %>% 
+  dplyr::select(patient_id, age_at_sampling) %>%
+  unique() %>%
+  filter(age_at_sampling >= 18) %>%
+  ggplot() +
+  geom_histogram(mapping = aes(x = age_at_sampling))+
+  theme_minimal()
+
+ggarrange(m3243_het, m3243_age, ncol = 1)
+
+
+```
+
+
+## Severity distribution
+
+Severity is defined on the basis of observation of the HPO terms associated with each patient. 
+
+```{r}
+
+m3243_var %>% 
+  dplyr::select(patient_id, Categorie) %>% 
+  unique() %>% 
+  group_by(Categorie) %>% 
+  dplyr::count() %>%
+  ggplot(aes(x=Categorie, y=n))+
+  geom_col()+
+  theme_minimal()
+
+```
+
+Testing for a correlation between a qualitative variable (Category) and a quantitative variable (m3243 heteroplasmy).
+
+```{r}
+
+m3243_var$Categorie <- factor(m3243_var$Categorie, ordered=TRUE)
+m3243_var$Categorie <- as.numeric(m3243_var$Categorie)
+
+
+m3243_var$m3243_het <- as.numeric(m3243_var$m3243_het)
+m3243_var$m3243_het_normalized <- as.numeric(m3243_var$m3243_het_normalized)
+
+cor.test(m3243_var$Categorie, m3243_var$m3243_het_normalized, method = "spearman")
+
+
+## Avec normalisation et catégorie 2/3
+
+avec_norm_cat <- ggplot(m3243_var, aes(x = Categorie, y = m3243_het_normalized))+
+  geom_point()+
+  geom_smooth()+
+  theme_minimal()+
+  ggtitle("Avec normalisation et avec catégorie 2/3")
+
+
+## sans normalisation avec catégorie 2/3
+
+sans_norm_avec_cat <- ggplot(m3243_var, aes(x = Categorie, y = m3243_het))+
+  geom_point()+
+  geom_smooth()+
+  theme_minimal()+
+  ggtitle("Sans normalisation et avec Catégorie 2/3")
+
+## Avec normalisation et sans catégorie 2/3
+
+avec_normm_sans_cat <- m3243_var %>% filter(Categorie != 3) %>%
+  ggplot(aes(x = Categorie, y = m3243_het_normalized))+
+  geom_point()+
+  geom_smooth()+
+  theme_minimal()+
+  ggtitle("Avec normalisation et sans catégorie 2/3")
+
+## Sans normalisation et sans catégorie 2/3
+
+sans_norm_cat <- m3243_var %>% filter(Categorie != 3) %>%
+  ggplot(aes(x = Categorie, y = m3243_het))+
+  geom_point()+
+  geom_smooth()+
+  theme_minimal()+
+  ggtitle("Sans normalisation et sans catégorie 2/3")
+
+ggarrange(avec_norm_cat, sans_norm_avec_cat, avec_normm_sans_cat, sans_norm_cat)
+
+m3243_var_withoutcat3 <- m3243_var %>% filter(Categorie != 3) 
+
+cor.test(m3243_var_withoutcat3$Categorie, m3243_var_withoutcat3$m3243_het_normalized, method = "spearman")
+
+cor.test(m3243_var_withoutcat3$Categorie, m3243_var_withoutcat3$m3243_het, method = "spearman")
+
+
+```
+
+## Severity based on the age
+
+```{r}
+
+severite_age_cat <- m3243_var %>% 
+  dplyr::select(patient_id, Categorie, age_at_sampling) %>%
+  ggplot(aes(x = Categorie, y = age_at_sampling))+
+  geom_point()+
+  geom_smooth() +
+  theme_minimal()
+
+severite_age_sanscat <- m3243_var %>% 
+  dplyr::select(patient_id, Categorie, age_at_sampling) %>%
+  filter(Categorie != 3) %>%
+  ggplot(aes(x = Categorie, y = age_at_sampling))+
+  geom_point()+
+  geom_smooth() +
+  theme_minimal()
+  
+ggarrange(severite_age_cat, severite_age_sanscat)
+
+
+```
+
+### From birth to adulthood
+
+```{r}
+
+m3243_var %>% 
+  filter(age_at_sampling <= 18) %>%
+  dplyr::select(patient_id, Categorie, age_at_sampling) %>%
+  ggplot(aes(x = Categorie, y = age_at_sampling))+
+  geom_point()+
+  geom_smooth() +
+  theme_minimal()
+
+```
+
+
+### from adults to the elderly
+
+
+```{r}
+
+m3243_var %>% 
+  filter(age_at_sampling >= 18) %>%
+  dplyr::select(patient_id, Categorie, age_at_sampling) %>%
+  ggplot(aes(x = Categorie, y = age_at_sampling))+
+  geom_point()+
+  geom_smooth() +
+  theme_minimal()
+
+#sans cat 2/3
+m3243_var %>% 
+  filter(age_at_sampling >= 18 & Categorie != 3) %>%
+  dplyr::select(patient_id, Categorie, age_at_sampling) %>%
+  ggplot(aes(x = Categorie, y = age_at_sampling))+
+  geom_point()+
+  geom_smooth() +
+  theme_minimal()
+
+
+```
+
+
+# Session info
+
+```{r}
+sessioninfo::session_info()
+```
+
+
+
+
