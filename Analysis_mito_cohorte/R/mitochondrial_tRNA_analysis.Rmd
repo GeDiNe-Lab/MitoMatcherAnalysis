@@ -1,0 +1,220 @@
+---
+title: 'Analysis report : Mitochondrial tRNA analysis of patients with the 3243 mutation'
+author: "Axel Bonesteve"
+date: "2025-02-19"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(eval = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This report is an example of an analysis carried out on mitochondrial tRNA in a cohort of patients with mitochondrial diseases, in particular affected by the m3243 mutation responsible for MELAS and MIDD syndromes. 
+
+# Librairies
+
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(formattable)
+library(randomcoloR)
+library(factoextra)
+library(FactoMineR)
+
+```
+
+# Functions
+
+## Importation des données
+
+### Fonctions
+
+```{R}
+
+annotate_synonymous <- function(df){
+  sdf <- df %>% mutate(fp = Consequence == "synonymous_variant")
+  variant_causes_Wobble_to_WCF <-  (grepl("\\*",sdf$Variant.tRNA) & grepl("near",sdf$Reference.tRNA)) & sdf$fp
+  variant_causes_WCF_to_Wobble <-  (grepl("\\*",sdf$Reference.tRNA) & grepl("near",sdf$Variant.tRNA)) & sdf$fp
+  variant_causes_Wobble_to_Wobble <-  (grepl("near",sdf$Variant.tRNA) & grepl("near",sdf$Reference.tRNA)) & sdf$fp
+  variant_causes_WCF_to_WCF <- (grepl("\\*",sdf$Variant.tRNA) & grepl("\\*",sdf$Reference.tRNA)) & sdf$fp
+  
+  # Sanity check
+  summary(as.numeric(variant_causes_Wobble_to_WCF) + 
+            as.numeric(variant_causes_WCF_to_Wobble) + 
+            as.numeric(variant_causes_Wobble_to_Wobble) + as.numeric(variant_causes_WCF_to_WCF))
+  vec_annotate <- case_when(
+    variant_causes_Wobble_to_WCF ~ "Wobble_to_WCF", 
+    variant_causes_WCF_to_Wobble ~ "WCF_to_Wobble", 
+    variant_causes_Wobble_to_Wobble ~ "Wobble_to_Wobble", 
+    variant_causes_WCF_to_WCF ~ "WCF_to_WCF", 
+    TRUE ~ "other"
+  )
+}
+
+```
+
+# Data importation
+
+Loading data for m3243 cohort variants
+
+```{r}
+
+m3243 <- read.csv2("../data/concatenate_variants.csv", header = TRUE,sep = ";") 
+m3243 <- m3243[,-15]
+m3243$pos <- as.integer(m3243$pos)
+
+m3243$id <- paste0(m3243$ref, m3243$pos, m3243$alt)
+m3243$heteroplasmy_rate <- as.numeric(m3243$heteroplasmy_rate)
+
+```
+
+
+### Loading genomic positions
+
+```{r}
+
+genome_loci <- read.csv2(file = "../data/genome_loci_table.csv", header =TRUE)[,-1]
+```
+
+
+
+### Chargement des données annotations
+
+```{r}
+
+# Import data
+annotations <- fread("../data/functional_variant_tRNA_anticodon_table.tsv") %>% data.frame()
+annotations$syn_annotation <- annotate_synonymous(annotations) # On donne à chaque variant une classe.
+annotations$id <- paste0(annotations$Reference,annotations$Position, annotations$Variant) # Création d'un autre identifiant.
+```
+
+### Merging annotations and genome_loci data
+
+Integrate annotation information into the genome_loci array, since the annotations array contains information only for variants that introduce protein modifications.
+
+
+```{r}
+
+genome_merged <- left_join(genome_loci, annotations %>% dplyr::select(-Position, Reference, Variant), by = "id") # combination of genome_loci & annotations
+
+```
+
+
+### Merging annotation data and sub-cohort variant data
+
+Merging of genome and mutation data in m3243.
+
+```{r}
+m3243_merged <- merge(m3243, genome_merged, by = "id", all.x=TRUE,sort=FALSE)
+```
+
+## Analyses
+
+### Types de variants
+
+```{r}
+
+vec_name_tRNA <- scan("../data/tRNA_names.txt",character(), quote = "", sep = ",") #Chargemetn du nom des ARNt
+
+#  Creation of a column to define the type of variant.
+
+m3243_merged <- m3243_merged %>% mutate(type_variant = case_when(
+  Biotype == "protein_coding" ~ "protein_coding", # variants protéiques
+    Locus %in% c("MT-RNR1", "MT-RNR2") ~ "RNAr_coding", # Variants ARNr
+    Locus %in% vec_name_tRNA ~ "RNAt_coding", # Variants ARNt
+    Locus == "MT-CR" ~ "CR_coding"# Variants Coding region
+))
+# Create a column for tRNA, rRNA, D-loop or protein
+
+# Calculation of variant types 
+
+m3243_merged %>% 
+  group_by(type_variant) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = type_variant, y = n)) + 
+  geom_col(position = "dodge", stat = "identity") + 
+  theme_minimal() + 
+  ylab("number of variants normalized by cohort size") +
+  xlab("type of variant") +
+  ggtitle("Number of variants according to type.") +
+  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10))
+```
+### ARNt
+
+Adding APOGEE2 scores
+
+```{r}
+
+apogee_trna <- read.csv2("../data/apogee2_trna.csv", header = T)
+
+apogee_trna$id <- paste0(apogee_trna$Ref, apogee_trna$Pos, apogee_trna$Alt)
+```
+
+Fusion with the other datasets and subselection of tNRA 
+
+```{r}
+
+m3243_trna <- m3243_merged %>% left_join(apogee_trna %>% dplyr::select(id, t.APOGEE.score, t.APOGEE.unbiased.score), by = "id") %>% filter(Locus %in% vec_name_tRNA)
+
+```
+
+Sous-sélection : 
+
+```{r}
+m3243_trna %>% filter(type_variant == "RNAt_coding") %>% 
+  group_by(Locus) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = Locus, y = n)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  ylab("Number of variants")+
+  xlab("tRNA variants")+
+  ggtitle("Number of variants present on tRNAs m3243 cohort.")+
+  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10))+
+  theme_minimal()+
+  scale_y_continuous(
+    breaks = seq(1,10, by = 1)
+  )
+```
+
+Evolution of the apogee score for tRNAs
+
+```{r}
+# absence of associated probability in t-RNA APOGEE data provided by MitImpact
+
+# m3243_trna %>% 
+#   dplyr::select((id, cohorte, t.APOGEE.score.x, t.APOGEE.unbiased.score) %>%
+#   unique() %>%
+#   ggplot(aes(x = APOGEE2_score, y = APOGEE2_probability, color = APOGEE2))+
+#   geom_point() + 
+#   theme_light() + 
+#   ylab("Probabilité APOGEE2")+
+#   xlab("Score APOGEE2")+
+#   ggtitle("Evolution du score APOGEE2 en fonction de la probabilité.")+
+#   theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10) )+
+#   facet_grid(.~cohorte)
+
+
+```
+
+
+```{r}
+
+m3243_trna %>% filter(type_variant == "RNAt_coding" & Locus == "MT-TT") %>% dplyr::select(id, heteroplasmy_rate, patient_id, haplogroup, t.APOGEE.score, t.APOGEE.unbiased.score)
+
+```
+
+
+```{r}
+
+m3243_trna %>% filter(type_variant == "RNAt_coding" & Locus == "MT-TL2") %>% dplyr::select(id, heteroplasmy_rate, patient_id, haplogroup, t.APOGEE.score, t.APOGEE.unbiased.score)
+
+```
+
+```{r}
+sessioninfo::session_info()
+```
+
+

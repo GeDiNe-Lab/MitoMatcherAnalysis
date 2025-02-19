@@ -292,6 +292,8 @@ colnames(random_cohorte)
 ```
 
 
+
+
 # Analyses
 
 ## Number of patient
@@ -371,11 +373,11 @@ m3243_type_var <- m3243_merged %>%
   arrange(desc(n)) %>% 
   mutate(cohorte = "m3243")
 
-nrow(m3243 %>% dplyr::select(patient_id, tissue) %>% unique()) # Nb d'échantillons différents
+nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique()) # Nb d'échantillons différents
 
-m3243_type_var$norm <- m3243_type_var$n/ nrow(m3243 %>% dplyr::select(patient_id, tissue) %>% unique())
+m3243_type_var$norm <- m3243_type_var$n/ nrow(m3243_var %>% dplyr::select(patient_id, tissue) %>% unique())
 
-random_cohorte_type_var <- random_cohorte %>%
+random_cohorte_type_var <- random_cohorte_merged %>%
   group_by(Consequence) %>%
   dplyr::count() %>%
   arrange(desc(n)) %>%
@@ -645,35 +647,37 @@ missense_m3243 %>%
 
 And now by gene? 
 
+Import mitochondrial gene size
+
 ```{r}
+mt_gene_size <- fread("../data/mtGeneSize.txt")
+```
 
-# Comptage complet
 
-gene_size <- gene_size %>% rename(proteins = "Symbol", n = "gene_size") 
-#REVOIR 
-
+```{r}
+mt_gene_size <- mt_gene_size %>% rename(Symbol = proteins, gene_size = n) 
 
 gene_count_missense_m3243 <- missense_m3243 %>% 
   dplyr::select(patient_id, pos, Symbol) %>% 
   unique() %>% group_by(Symbol) %>% 
   dplyr::count() %>% mutate(cohorte = "m3243") %>% 
-  arrange(desc(n)) %>% left_join(gene_size, by = "Symbol")
+  arrange(desc(n)) %>% left_join(mt_gene_size, by = "Symbol")
 
-nb_ind_m3243 <- 85
-nb_ind_control <- 54
+nb_ind_m3243 <- length(unique(m3243_var$patient_id))
+nb_ind_random <- length(unique(random_cohorte$patient_id))
   
 # Normalisation par la taille des gènes et aussi par la taille de la cohorte.
 gene_count_missense_m3243$prop <- gene_count_missense_m3243$n / (gene_count_missense_m3243$gene_size * nb_ind_m3243)
 
 
-gene_count_missense_control <- missense_control %>% 
-  dplyr::select(id_CRB, position, Symbol) %>% 
+gene_count_missense_control <- missense_random %>% 
+  dplyr::select(patient_id, pos, Symbol) %>% 
   unique() %>% group_by(Symbol) %>% 
-  dplyr::count() %>% mutate(cohorte = "control") %>% 
-  arrange(desc(n)) %>% left_join(gene_size, by = "Symbol")
+  dplyr::count() %>% mutate(cohorte = "random") %>% 
+  arrange(desc(n)) %>% left_join(mt_gene_size, by = "Symbol")
 
 # Normalisation par la taille des gènes et aussi par la taille de la cohorte.
-gene_count_missense_control$prop <- gene_count_missense_control$n / (gene_count_missense_control$gene_size * nb_ind_control)
+gene_count_missense_control$prop <- gene_count_missense_control$n / (gene_count_missense_control$gene_size * nb_ind_random)
 
 gene_count_cohortes <- rbind(gene_count_missense_control, gene_count_missense_m3243)
 
@@ -689,9 +693,12 @@ ggplot(gene_count_cohortes, aes(x = Symbol, y = prop, fill = cohorte)) +
 ```
 
 
-Analyse des variants faux sens :
+Analysis of missense variants :
 
-Il faut d'abord sauvegarder les listes des variants faux-sens par cohorte :
+
+The rest of the analysis on these missense (pathogenic) variants is written in the Rmarkdown file named pathos_missense_variant.Rmd. Loading of m3243 variant data, from the search for missense (pathogenic) variants reported as such in the literature, found in the m3243 cohort. Annotation data was also loaded and merged with variant data. The aim is to report on the summarized clinical picture the pathogenic variants carried by patients.
+
+First, save the lists of missense variants by cohort:
 
 ```{r}
 
@@ -699,22 +706,22 @@ m3243_merged %>%
   filter(Consequence == "missense_variant") %>% 
   dplyr::select(id) %>% 
   unique() %>% 
-  pull(id)  %>% 
-  write(file = "../transformed_data/24-07-24_data/missense_variants_m3243.txt", sep = ";")
+  pull(id)  #%>% 
+  #write(file = "../transformed_data/24-07-24_data/missense_variants_m3243.txt", sep = ";")
 
 
-control_cohorte_merged %>%
+random_cohorte_merged %>%
   filter(Consequence == "missense_variant") %>%
   dplyr::select(id) %>%
   unique() %>%
-  pull(id) %>%
-  write(file = "../transformed_data/24-07-24_data/missense_variants_control.txt", sep = ";")
+  pull(id) #%>%
+  #write(file = "../transformed_data/24-07-24_data/missense_variants_control.txt", sep = ";")
 
 ```
 
-Ensuite il faut lancer le script pour les identifier.
+Then run the script to identify them.
 
-Le script utilisé pour la recherche des variants faux-sens : 
+The script used to search for missense variants :
 
 ```{python, eval = FALSE}
 
@@ -761,485 +768,6 @@ with open(output_file, 'w') as outfile:
 print(f"Le résultat de la recherche a été enregistré dans {output_file}")
 
 ```
-
-
-```{r}
-
-test_m3243 <- read.csv2("../transformed_data/24-07-24_data/research_variants_m3243.csv", header = FALSE)
-test_control <- read.csv2("../transformed_data/24-07-24_data/research_variants_control.csv", header=FALSE)
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-Dans le lot on retrouve des variants multiples. Mais aussi et surtout des mutations non codantes pour des protéines donc ARNr, ARNt et non codantes.
-
-La majorité des mutations sont des mutations qui ne se trouvent pas sur les gènes.
-Est-ce que ces mutations sont bien à côté des gènes ou alors est-ce un problème du tableau annotation ? 
-
-
-Quels gènes présentent le plus de mutations ? 
-
-
-```{r}
-
-mt_gene_size <- fread("../raw_data/mtGeneSize.txt")
-
-#Changer les noms des Gènes (PS : le faire directement dans le fichier prend surement moins de temps)
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "ATPase6", "ATP6")
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "ATPase8", "ATP8")
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COIII", "CO3")
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COII", "CO2")
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "COI", "CO1")
-mt_gene_size$proteins <- str_replace(mt_gene_size$proteins, "Cytb", "CYB")
-
-
-m3243_mutation_count_by_gene <- m3243_merged %>% group_by(Symbol) %>% dplyr::count() %>% rename(Symbol = "proteins")
-
-global_gene_count_normalized <- m3243_mutation_count_by_gene %>%
-  left_join(mt_gene_size, by = "proteins") %>% 
-  mutate(normalizationByGeneSize = n.x /n.y) %>% 
-  arrange(desc(normalizationByGeneSize))
-
-global_gene_count_normalized 
-
-# juste pour tester
-ggscatter(global_gene_count_normalized, x = "n.x", y = "n.y",
-          add = "reg.line",
-          cor.coef = TRUE, cor.method = "pearson")
-```
-En normalisant par la taille, on voit que c'est l'ATP6 puis CYB puis ND2. Les gènes présentant le moins de mutations sont le CO2, le ND4L et l'ATP8. 
-
-
-De retour sur les types de variants, j'observe un stop_retained_variant : 
-
-```{r}
-
-m3243_merged %>% filter(Consequence == "stop_retained_variant")
-
-```
-
-Pour les variants faux-sens : 
-
-Combien par individus ?
-
-```{r}
-
-m3243_merged %>% 
-  filter(Consequence == "missense_variant") %>% 
-  group_by(patient_id, tissue) %>% 
-  dplyr::count() %>% 
-  arrange(desc(n)) %>%
-  ggplot(aes(x = n)) +
-  geom_histogram(binwidth = 2, fill = "blue", color = "black")+
-  theme_minimal()
- 
-```
-
-Est-ce que certains variants faux-sens sont davantages retrouvés ? 
-
-```{r}
-
-# je rends unique chaque mutation par individu pour ne pas avoir l'effet de deux échantillons pour un même individu.
-
-m3243_merged %>% 
-  filter(Consequence == "missense_variant") %>%
-  dplyr::select(patient_id, mutation) %>%
-  unique() %>%
-  group_by(mutation) %>%
-  dplyr::count() %>%
-  arrange(desc(n))
-
-# Au dessus de n = 74 * 5/100 = 3.7 variants, on peut les considérer comme fréquents dans la cohorte.
-
-
-list_frequent_variants <- m3243_merged %>% filter(Consequence == "missense_variant") %>% dplyr::select(patient_id, mutation) %>% unique() %>% group_by(mutation) %>% dplyr::count() %>% filter(n >= 5) %>% pull(mutation)
-```
-
-12 variants peuvent être considérés comme fréquents dans la population. Ces variants sont : 
-`r m3243_merged %>% filter(Consequence == "missense_variant") %>% dplyr::select(patient_id, mutation) %>% unique() %>% group_by(mutation) %>% dplyr::count() %>% filter(n >= 5) %>% pull(mutation)`
-
-Sont-ils également fréquents dans la population ?
-
-
-```{r}
-
-m3243_merged[m3243_merged$mutation %in% list_frequent_variants,] %>% 
-  dplyr::select(mutation, patient_id, GB.Frequency) %>% 
-  mutate(GB.Frequency = as.numeric(GB.Frequency)) %>%
-  arrange(GB.Frequency)
-  
-```
-
-
-
-Est-ce que ces variants faux-sens sont associés à la liste pathogène ?
-
-92 mutations variants faux-sens dans la cohorte m3243.
-
-```{r}
-
-m3243_merged %>% 
-  filter(Consequence == "missense_variant") %>% 
-  dplyr::select(id) %>% 
-  unique() %>% 
-  pull(id)  %>% 
-  write(file = "../transformed_data/missense_variants.txt", sep = ";")
-
-```
-
-
-```{python, eval = FALSE}
-
-import sys
-import csv
-import os
-
-# Vérifier si les fichiers d'entrée et de sortie sont spécifiés
-if len(sys.argv) != 4:
-    print("Utilisation : python script.py <fichier_variants.txt> <fichier_recherche_pathos.csv> <output.txt>")
-    sys.exit(1)
-
-input_variants = sys.argv[1]
-search_file = sys.argv[2]
-output_file = sys.argv[3]
-
-# Vérifier si les fichiers d'entrée existent
-if not all(map(lambda x: os.path.isfile(x), [input_variants, search_file])):
-    print("Un ou plusieurs fichiers d'entrée sont manquants.")
-    sys.exit(1)
-
-# Ouvrir le fichier de sortie en mode écriture
-with open(output_file, 'w') as outfile:
-    # Lire les variants à partir du fichier d'entrée
-    with open(input_variants, 'r') as infile:
-        for line in infile:
-            # Extraire le variant de la ligne courante
-            variant = line.strip().split(';')[0]
-
-            # Rechercher la présence du variant dans le fichier de recherche
-            with open(search_file, 'r') as searchfile:
-                reader = csv.reader(searchfile, delimiter=';')
-                found = False
-                for row in reader:
-                    if row[3] == variant:
-                        outfile.write(';'.join(row) + '\n')
-                        found = True
-                        break
-
-                # Écrire "absent" dans le fichier de sortie si le variant n'est pas trouvé
-                # if not found:
-                #     outfile.write("absent\n")
-
-print(f"Le résultat de la recherche a été enregistré dans {output_file}")
-
-```
-
-
-après avoir lancé l'analyse, on obtient : 
-
-```{r}
-
-missense_analysis <- read.csv2(file = "../transformed_data/searched_pathos_missense_variants.csv", header = FALSE)
-
-```
-
-```{r}
-# Récupération des missense_pathos
-
-vec_missense_pathos <- missense_analysis %>% pull(V4)
-length(vec_missense_pathos)
-```
-
-```{r}
-m3243_missense_pathos <- m3243_merged[m3243_merged$id %in% vec_missense_pathos,]
-```
-
-
-
-
-## Variants synonymes 
-
-```{r}
-
-m3243_syn <- m3243_merged %>% filter(Consequence == "synonymous_variant")
-control_syn <- control_cohorte_merged %>% filter(Consequence == "synonymous_variant")
-# Il faudrait filtrer à l'avance le fichier control_syn pour enlever certaines colonnes redondantes
-
-```
-
-
-### Analyse 
-
-Est-ce que fusionner les deux tableaux est pertinent ?
-
-
-#### Général 
-
-Quelle est la distribution du nombre de variants synonymes par patient ? 
-
-
-```{r}
-
-m3243_syn %>% 
-  group_by(patient_id, tissue) %>% 
-  dplyr::count() %>% 
-  ggplot(aes(x = n)) +
-  geom_histogram(binwidth = 1, fill = "blue", color = "black")+
-  theme_minimal() +
-  scale_x_continuous(limits = c(0,40))
-
-
-control_syn %>%
-  group_by(id_CRB, tissue) %>%
-  dplyr::count() %>%
-  ggplot(aes(x = n)) +
-  geom_histogram(binwidth = 1, fill = "red", color ="black")+
-  theme_minimal()+
-  scale_x_continuous(limits = c(0,40))
-
-length(unique(control_syn$id_CRB)) #Même nombre de lignes. Il semble y avoir un ID_CRB par individu par échantillon. Donc je ne sais pas si l'ID_CRB représente 1 individu ou 1 échantillon. Demander.
-
-# Voir statistiquement si le nombre de variants diffère entre les deux cohortes.
-
-
-```
-
-Quelle est la distribution des variants synonymes au niveau des gènes ?
-
-On prend tous les variants pas le regard d'une distribution.
-
-```{r}
-# Import taille gène et modif
-geneSize <- fread("../raw_data/mtGeneSize.txt")
-colnames(geneSize) <- c("Symbol", "size")
-
-
-control_syn_gene <- control_syn %>%
-  group_by(Symbol) %>%
-  dplyr::count() %>%
-  mutate(cohorte = "control")
-
-
-m3243_syn %>%
-  group_by(Symbol) %>%
-  dplyr::count() %>%
-  mutate(cohorte = "m3243") %>%
-  rbind(control_syn_gene) %>%
-  left_join(geneSize, by = "Symbol") %>%
-  mutate(Norm = n/size) %>% arrange(desc(Norm)) %>%
-  ggplot(aes(fill = cohorte, y = Norm, x = Symbol)) +
-  geom_bar(position = "dodge", stat = "identity") + 
-  theme_minimal()
-  
-
-## revoir cette normalisation
-
-
-```
-
-
-```{r}
-
-m3243_syn %>%
-  group_by(Symbol) %>%
-  dplyr::count() %>%
-  mutate(cohorte = "m3243") %>%
-  rbind(control_syn_gene) %>%
-  left_join(geneSize, by = "Symbol") %>%
-  mutate(Norm = n/(size*sum(n))) %>% arrange(desc(Norm)) %>%
-  ggplot(aes(fill = cohorte, y = Norm, x = Symbol)) +
-  geom_bar(position = "dodge", stat = "identity") + 
-  theme_minimal()+
-  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 14))
-```
-
-Quelle est la distribution des synonymes variants dans les différentes classes selon différents paramètres (haplogroupes, gènes, etc.) ?
-
-
-Dans toute les cohortes : 
-
-```{r}
-
-
-
-all_df <- rbind(
-  count_me(control_syn) %>% mutate(cohorte = "control"),
-  count_me(m3243_syn) %>% mutate(cohorte = "m3243")
-)
-
-
-p1bar <- ggplot(all_df, aes(x = syn_annotation, y = perc, fill = cohorte)) +
-  geom_bar( stat = "identity", position = "dodge", color = "black",) +
-  scale_fill_manual(values = c("lightgreen","lightyellow"))+
-  pretty_plot(fontsize = 12) + L_border() + scale_y_continuous(expand = c(0,0), limits = c(0,80))+ 
-  labs(x = "", y = "% of synonymous mtDNA variants") + theme(legend.position = "right") +
-  theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15))
-  
-
-p1bar
-
-process_stats_syn_type(df = m3243_syn, df_ref = control_syn, count_df = FALSE, count_df_ref = FALSE)
-
-```
-
-
-Chargment données cliniques
-
-```{r}
-clinical_info <- read.csv2(file = "../transformed_data/17-07-24_data/synthetized_clinical_table_reduce.csv")
-```
-
-
-Quels sont les variants sur les ARNt dans l'esnemble de la cohorte de patients :
-
-Ajout des informations Apogee2
-
-```{r}
-vec_name_tRNA <- scan("../raw_data/tRNA_names.txt",character(), quote = "", sep = ",") #Chargemetn du nom des ARNt
-
-m3243_merged <- m3243_merged %>% mutate(type_variant = case_when(
-  Biotype == "protein_coding" ~ "protein_coding", # variants protéiques
-    Locus %in% c("MT-RNR1", "MT-RNR2") ~ "RNAr_coding", # Variants ARNr
-    Locus %in% vec_name_tRNA ~ "RNAt_coding", # Variants ARNt
-    Locus == "MT-CR" ~ "CR_coding"# Variants Coding region
-))
-
-apogee_trna <- read.csv2("../raw_data/apogee2_trna.csv")
-
-apogee_trna$id <- paste0(apogee_trna$Ref, apogee_trna$Pos, apogee_trna$Alt)
-```
-
-
-```{r}
-
-m3243_trna <- m3243_merged %>% left_join(apogee_trna %>% dplyr::select(id, t.APOGEE.score, t.APOGEE.unbiased.score), by = "id") %>% filter(Locus %in% vec_name_tRNA)
-
-```
-
-```{r}
-tRNAL2_patient <- m3243_trna %>%  filter(type_variant == "RNAt_coding" & Locus == "MT-TL2") %>% dplyr::select(id, heteroplasmy_rate, patient_id, haplogroup, t.APOGEE.score, t.APOGEE.unbiased.score) %>% pull(patient_id)
-```
-
-
-
-```{r}
-m3243_trna %>% 
-  dplyr::select(patient_id, id) %>%
-  unique() %>%
-  group_by(id) %>%
-  dplyr::count() %>%
-  left_join(m3243_trna %>% dplyr::select(id, t.APOGEE.unbiased.score), by = "id") %>%
-  mutate(t.APOGEE.unbiased.score = as.numeric(t.APOGEE.unbiased.score)) %>%
-  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
-  ggplot(aes(x = t.APOGEE.unbiased.score, y = n)) +
-  geom_point()+
-  geom_text_repel(mapping = aes(label = id)) +
-  theme_minimal()+
-  xlab("Score APOGEE2")+
-  ylab("Nombre de porteurs")+
-  ggtitle("Evolution du score apogee2 en fonction du nombre de porteurs pour les ARNt")
-
-```
-
-
-A quelles catégories appartiennent ces patients ?
-
-```{r}
-clinical_info %>% filter(patient_id %in% tRNAL2_patient)
-
-clinical_info %>% filter(patient_id %in% tRNAL2_patient) %>% group_by(Categorie)%>% dplyr::count() %>% ggplot(aes(x = Categorie, y = n, fill = Categorie))+
-  geom_col() +
-  theme_minimal()+
-  ylab("Nombre de porteurs")+
-  xlab("Catégories")
-
-clinical_info %>% filter(patient_id %in% tRNAL2_patient, Categorie %in% c("1","2"))
-
-```
-
-
-### Les variants protéiques
-
-Import des informations d'APOGEE2
-
-```{r}
-apogee_protein <- read.csv(file = "../raw_data/apogee2_score_filtered.txt", sep= "\t")
-apogee_protein$id <- paste0(apogee_protein$Ref, apogee_protein$Start, apogee_protein$Alt)
-```
-
-
-```{r}
-
-m3243_protein <- m3243_merged %>% filter(type_variant == "protein_coding") %>% left_join(apogee_protein, by = "id")
-
-```
-
-
-```{R}
-
-m3243_protein%>% 
-  filter(Consequence == "missense_variant") %>%
-  dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2) %>%
-  unique() %>%
-  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
-  ggplot(aes(x = APOGEE2_score, y = APOGEE2_probability, color = APOGEE2))+
-  geom_point() + 
-  theme_light() + 
-  ylab("Probabilité APOGEE2")+
-  xlab("Score APOGEE2")+
-  ggtitle("Evolution du score APOGEE2 en fonction de la probabilité.")+
-  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+ 
-  geom_text_repel(aes(label = id), fill = "white", color = "black", nudge_y = 0.03)
-
-```
-
-
-JE peux représenter les mutations avec le score le plus élevé et avec le plus de présence
-
-```{r}
-m3243_protein %>% filter(Consequence == "missense_variant") %>%
-  dplyr::select(patient_id, id) %>%
-  group_by(id) %>%
-  dplyr::count() %>%
-  left_join(m3243_protein %>% dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2), by = "id") %>%
-  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
-  ggplot(aes(x = APOGEE2_score, y = n, color = APOGEE2)) +
-  geom_point() +
-  theme_light() +
-  ylab("Nombre de porteurs")+
-  xlab("Score APOGEE2")+
-  ggtitle("Evolution du score APOGEE2 en fonction du nombre de porteurs.")+
-  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+
-  geom_text_repel(aes(label = id), color = "black")
-
-m3243_protein%>%
-  filter(Consequence == "missense_variant") %>%
-  dplyr::select(id, APOGEE2_score, APOGEE2_probability, APOGEE2) %>%
-  unique() %>%
-  distinct(id, .keep_all = TRUE) %>% # S'assure que chaque id est unique.
-  ggplot(aes(x = APOGEE2_score, y = APOGEE2_probability, color = APOGEE2))+
-  geom_point() +
-  theme_light() +
-  ylab("Probabilité APOGEE2")+
-  xlab("Score APOGEE2")+
-  ggtitle("Evolution du score APOGEE2 en fonction de la probabilité")+
-  theme(axis.title = element_text(size = 10), legend.text = element_text(size = 10), strip.text = element_text(size = 10))+
-  geom_text_repel(aes(label = id), fill = "white", color = "black", nudge_y = 0.03)
-
-
-```
-
 
 # Session info
 
