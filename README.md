@@ -3,6 +3,14 @@
 ## Overview
 This project is designed for analyzing mitochondrial cohort data, focusing on clinical and genetic variant analyses. The repository is organized into multiple components that handle data preprocessing, variant annotation, and clinical table generation.
 
+
+## More context
+
+Mitochondrial diseases are highly heterogeneous, both clinically and genetically. 
+The diagnostic network for mitochondrial diseases (MitoDiag) is developing a national clinico-biological database to reduce diagnostic error in these diseases. 
+As part of the MITOMICS project, CHU d'Angers has developed Mitomatcher, a platform for sharing and querying genomic and clinical data, tailored to the needs of the MitoDiag network. Bioanalysis of the first patient cohorts thus constituted will enable the initiation of ancillary projects targeting mitochondrial genetics, including sSNV.
+
+
 ## Repository Structure
 
 ```
@@ -103,3 +111,11 @@ renv::restore()
 ## Running the Analysis
 ### **R Analysis**
 Open `Analysis_mito_cohorte.Rproj` in RStudio and execute the markdown scripts as needed.
+
+
+## Contact
+
+
+[RAJOUTER CONTACTs]
+[RAJOUTER FINANCEMENT]
+
