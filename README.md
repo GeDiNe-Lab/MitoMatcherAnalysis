@@ -1,4 +1,4 @@
-# Analysis_mito_cohorte
+# MitoMatcherAnalysis
 
 ## Overview
 This project is designed for analyzing mitochondrial cohort data, focusing on clinical and genetic variant analyses. The repository is organized into multiple components that handle data preprocessing, variant annotation, and clinical table generation.
