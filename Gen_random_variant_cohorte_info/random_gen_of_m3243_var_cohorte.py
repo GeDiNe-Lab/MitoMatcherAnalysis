@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Chemin relatif vers genome_loci_table.csv
+    # Relative path to genome_loci_table.csv
     data_folder = "data"
     file_name = "genome_loci_table.csv"
     file_path = os.path.join(data_folder, file_name)
