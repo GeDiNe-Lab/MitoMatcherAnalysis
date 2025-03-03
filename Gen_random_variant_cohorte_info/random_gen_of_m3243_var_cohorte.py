@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import random
 import argparse
+import os
 
 
 # Haplogroup distribution based on given counts
@@ -94,8 +95,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    mt_var = read_csv2("Gen_random_variant_cohorte_info/data/genome_loci_table.csv")
+    # Chemin relatif vers genome_loci_table.csv
+    data_folder = "data"
+    file_name = "genome_loci_table.csv"
+    file_path = os.path.join(data_folder, file_name)
+    mt_var = read_csv2(file_path)
     
-    generate_patient_data(args.num_patients, args.min_variants, args.max_variants, args.output)
+    generate_patient_data(args.num_patients, args.min_variants, args.max_variants, args.output, mt_var)
 
     
